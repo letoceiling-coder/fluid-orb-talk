@@ -70,6 +70,7 @@ const App = () => (
             <Route path="/model-hub" element={<AIModelHub />} />
             <Route path="/automation" element={<AIAutomationBuilder />} />
             <Route path="/super-router" element={<AISuperRouter />} />
+            <Route path="/gateway-core" element={<AIGatewayCore />} />
             <Route path="/demo-media" element={<DemoMediaGenerator />} />
           </Route>
           <Route path="*" element={<NotFound />} />
