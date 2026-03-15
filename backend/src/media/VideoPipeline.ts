@@ -42,7 +42,7 @@ export class VideoPipeline {
 
   async generate(config: VideoGenerationConfig): Promise<VideoGenerationResult> {
     // TODO Phase 4: route to Runway / Pika based on config.model
-    const provider = this.registry.getProvider('replicate') as ReplicateProvider;
+    const provider = this.registry.getProvider('replicate') as unknown as ReplicateProvider;
     const url = await provider.generateVideo(config.prompt, { model: config.model ?? 'pika-2' });
 
     return {

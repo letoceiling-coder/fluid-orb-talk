@@ -72,7 +72,12 @@ export async function gatewayRoutes(fastify: FastifyInstance): Promise<void> {
         const dataVal = result.data as Record<string, unknown> | undefined;
         const raw     = dataVal?.response ?? dataVal;
         const text    = typeof raw === 'string' ? raw : JSON.stringify(raw ?? '');
-        return reply.send({ message: text, model: model ?? 'default', provider: result.provider, usage: null });
+        return reply.send({
+          message:  text,
+          model:    result.model ?? model ?? 'default',
+          provider: result.provider,
+          usage:    result.usage ?? null,
+        });
       }
 
       return reply.code(502).send({ error: result.error ?? 'Gateway error' });
@@ -102,7 +107,13 @@ export async function gatewayRoutes(fastify: FastifyInstance): Promise<void> {
           : typeof raw === 'object' && raw
             ? String(raw.description ?? raw.text ?? JSON.stringify(raw))
             : 'Analysis complete';
-        return reply.send({ description, objects: (data?.objects ?? []) as string[], provider: result.provider });
+        return reply.send({
+          description,
+          objects:  (data?.objects ?? []) as string[],
+          provider: result.provider,
+          model:    result.model,
+          usage:    result.usage ?? null,
+        });
       }
 
       return reply.code(502).send({ error: result.error ?? 'Vision error' });

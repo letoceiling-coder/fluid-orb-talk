@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { BaseProvider } from './BaseProvider.js';
-import type { TaskType } from '../types/gateway.types.js';
+import type { ChatResult, VisionResult } from './BaseProvider.js';
+import type { TaskType, TokenUsage } from '../types/gateway.types.js';
 import type {
   Message,
   ChatConfig,
@@ -38,11 +39,11 @@ export class OpenAIProvider extends BaseProvider {
     this.client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY ?? '' });
   }
 
-  async chat(messages: Message[], config: ChatConfig = {}): Promise<string> {
+  async chat(messages: Message[], config: ChatConfig = {}): Promise<ChatResult> {
     const model = config.model ?? CHAT_MODEL;
 
     const oaiMessages = messages.map((m) => ({
-      role: m.role as 'system' | 'user' | 'assistant',
+      role:    m.role as 'system' | 'user' | 'assistant',
       content: m.content,
     }));
 
@@ -52,25 +53,34 @@ export class OpenAIProvider extends BaseProvider {
 
     const res = await this.client.chat.completions.create({
       model,
-      messages: oaiMessages,
+      messages:    oaiMessages,
       temperature: config.temperature ?? 0.7,
-      max_tokens: config.maxTokens ?? 1024,
-      top_p: config.topP ?? 1,
+      max_tokens:  config.maxTokens   ?? 1024,
+      top_p:       config.topP        ?? 1,
     });
 
-    return res.choices[0]?.message?.content?.trim() ?? '';
+    const u = res.usage;
+    return {
+      text:  res.choices[0]?.message?.content?.trim() ?? '',
+      model: res.model,
+      usage: {
+        prompt_tokens:     u?.prompt_tokens     ?? 0,
+        completion_tokens: u?.completion_tokens ?? 0,
+        total_tokens:      u?.total_tokens      ?? 0,
+      },
+    };
   }
 
   async chatStream(
     messages: Message[],
     config: ChatConfig = {},
     onChunk: (chunk: string) => void,
-    onDone: () => void,
+    onDone:  (usage: TokenUsage) => void,
   ): Promise<void> {
     const model = config.model ?? CHAT_MODEL;
 
     const oaiMessages = messages.map((m) => ({
-      role: m.role as 'system' | 'user' | 'assistant',
+      role:    m.role as 'system' | 'user' | 'assistant',
       content: m.content,
     }));
 
@@ -80,22 +90,33 @@ export class OpenAIProvider extends BaseProvider {
 
     const stream = await this.client.chat.completions.create({
       model,
-      messages: oaiMessages,
+      messages:    oaiMessages,
       temperature: config.temperature ?? 0.7,
-      max_tokens: config.maxTokens ?? 1024,
-      stream: true,
+      max_tokens:  config.maxTokens   ?? 1024,
+      stream:      true,
+      stream_options: { include_usage: true },
     });
+
+    let usage: TokenUsage = this.zeroUsage();
 
     for await (const chunk of stream) {
       const delta = chunk.choices[0]?.delta?.content;
       if (delta) onChunk(delta);
+      // Final chunk carries usage when stream_options.include_usage = true
+      if (chunk.usage) {
+        usage = {
+          prompt_tokens:     chunk.usage.prompt_tokens     ?? 0,
+          completion_tokens: chunk.usage.completion_tokens ?? 0,
+          total_tokens:      chunk.usage.total_tokens      ?? 0,
+        };
+      }
     }
 
-    onDone();
+    onDone(usage);
   }
 
   private detectMimeType(base64: string): string {
-    const raw = base64.startsWith('data:') ? base64.split(',')[1] : base64;
+    const raw    = base64.startsWith('data:') ? base64.split(',')[1] : base64;
     const header = raw.slice(0, 12);
     if (header.startsWith('iVBORw0KGgo')) return 'image/png';
     if (header.startsWith('/9j/'))         return 'image/jpeg';
@@ -104,12 +125,11 @@ export class OpenAIProvider extends BaseProvider {
     return 'image/jpeg';
   }
 
-  async vision(imageBase64: string, prompt: string, config: VisionConfig = {}): Promise<string> {
-    const model = config.model ?? VISION_MODEL;
-
-    const raw = imageBase64.startsWith('data:') ? imageBase64.split(',')[1] : imageBase64;
-    const mime = this.detectMimeType(raw);
-    const imageUrl = `data:${mime};base64,${raw}`;
+  async vision(imageBase64: string, prompt: string, config: VisionConfig = {}): Promise<VisionResult> {
+    const model   = config.model ?? VISION_MODEL;
+    const raw     = imageBase64.startsWith('data:') ? imageBase64.split(',')[1] : imageBase64;
+    const mime    = this.detectMimeType(raw);
+    const imgUrl  = `data:${mime};base64,${raw}`;
 
     const res = await this.client.chat.completions.create({
       model,
@@ -117,15 +137,24 @@ export class OpenAIProvider extends BaseProvider {
         {
           role: 'user',
           content: [
-            { type: 'text', text: prompt || 'Describe what you see in this image.' },
-            { type: 'image_url', image_url: { url: imageUrl, detail: config.detail ?? 'auto' } },
+            { type: 'text',      text:      prompt || 'Describe what you see in this image.' },
+            { type: 'image_url', image_url: { url: imgUrl, detail: config.detail ?? 'auto' } },
           ],
         },
       ],
       max_tokens: config.maxTokens ?? 1024,
     });
 
-    return res.choices[0]?.message?.content?.trim() ?? '';
+    const u = res.usage;
+    return {
+      text:  res.choices[0]?.message?.content?.trim() ?? '',
+      model: res.model,
+      usage: {
+        prompt_tokens:     u?.prompt_tokens     ?? 0,
+        completion_tokens: u?.completion_tokens ?? 0,
+        total_tokens:      u?.total_tokens      ?? 0,
+      },
+    };
   }
 
   async embed(texts: string[], model = EMBED_MODEL): Promise<number[][]> {

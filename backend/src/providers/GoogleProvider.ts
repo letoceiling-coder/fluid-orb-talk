@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
 import { BaseProvider } from './BaseProvider.js';
-import type { TaskType } from '../types/gateway.types.js';
+import type { ChatResult, VisionResult } from './BaseProvider.js';
+import type { TaskType, TokenUsage } from '../types/gateway.types.js';
 import type {
   Message,
   ChatConfig,
@@ -35,7 +36,7 @@ export class GoogleProvider extends BaseProvider {
     this.genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY ?? '');
   }
 
-  async chat(messages: Message[], config: ChatConfig = {}): Promise<string> {
+  async chat(messages: Message[], config: ChatConfig = {}): Promise<ChatResult> {
     const modelName = config.model ?? CHAT_MODEL;
     const model = this.genAI.getGenerativeModel({
       model: modelName,
@@ -58,23 +59,33 @@ export class GoogleProvider extends BaseProvider {
         parts: [{ text: m.content }],
       }));
 
-    const lastMsg = messages.filter((m) => m.role !== 'system').at(-1);
+    const lastMsg  = messages.filter((m) => m.role !== 'system').at(-1);
     const userText = lastMsg?.content ?? '';
 
-    const chat = model.startChat({
+    const chat   = model.startChat({
       history,
       systemInstruction: systemPrompt ? { parts: [{ text: systemPrompt }], role: 'user' } : undefined,
     });
 
     const result = await chat.sendMessage(userText);
-    return result.response.text().trim();
+    const meta   = result.response.usageMetadata;
+
+    return {
+      text:  result.response.text().trim(),
+      model: modelName,
+      usage: {
+        prompt_tokens:     meta?.promptTokenCount     ?? 0,
+        completion_tokens: meta?.candidatesTokenCount ?? 0,
+        total_tokens:      meta?.totalTokenCount      ?? 0,
+      },
+    };
   }
 
   async chatStream(
     messages: Message[],
     config: ChatConfig = {},
     onChunk: (chunk: string) => void,
-    onDone: () => void,
+    onDone:  (usage: TokenUsage) => void,
   ): Promise<void> {
     const modelName = config.model ?? CHAT_MODEL;
     const model = this.genAI.getGenerativeModel({
@@ -98,22 +109,29 @@ export class GoogleProvider extends BaseProvider {
       }));
 
     const lastMsg = messages.filter((m) => m.role !== 'system').at(-1);
-
-    const chat = model.startChat({
+    const chat    = model.startChat({
       history,
       systemInstruction: systemPrompt ? { parts: [{ text: systemPrompt }], role: 'user' } : undefined,
     });
 
     const result = await chat.sendMessageStream(lastMsg?.content ?? '');
+    let lastMeta: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } | undefined;
+
     for await (const chunk of result.stream) {
       const text = chunk.text();
       if (text) onChunk(text);
+      if (chunk.usageMetadata) lastMeta = chunk.usageMetadata;
     }
-    onDone();
+
+    onDone({
+      prompt_tokens:     lastMeta?.promptTokenCount     ?? 0,
+      completion_tokens: lastMeta?.candidatesTokenCount ?? 0,
+      total_tokens:      lastMeta?.totalTokenCount      ?? 0,
+    });
   }
 
   private detectMimeType(base64: string): 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' {
-    const raw = base64.startsWith('data:') ? base64.split(',')[1] : base64;
+    const raw    = base64.startsWith('data:') ? base64.split(',')[1] : base64;
     const header = raw.slice(0, 12);
     if (header.startsWith('iVBORw0KGgo')) return 'image/png';
     if (header.startsWith('R0lGOD'))       return 'image/gif';
@@ -121,26 +139,32 @@ export class GoogleProvider extends BaseProvider {
     return 'image/jpeg';
   }
 
-  async vision(imageBase64: string, prompt: string, config: VisionConfig = {}): Promise<string> {
-    const modelName = config.model ?? VISION_MODEL;
+  async vision(imageBase64: string, prompt: string, config: VisionConfig = {}): Promise<VisionResult> {
+    const modelName  = config.model ?? VISION_MODEL;
     const model = this.genAI.getGenerativeModel({
       model: modelName,
       safetySettings: SAFETY,
       generationConfig: { maxOutputTokens: config.maxTokens ?? 1024 },
     });
 
-    const base64Data = imageBase64.startsWith('data:')
-      ? imageBase64.split(',')[1]
-      : imageBase64;
-
-    const mimeType = this.detectMimeType(base64Data);
+    const base64Data = imageBase64.startsWith('data:') ? imageBase64.split(',')[1] : imageBase64;
+    const mimeType   = this.detectMimeType(base64Data);
 
     const result = await model.generateContent([
       prompt || 'Describe what you see in this image.',
       { inlineData: { mimeType, data: base64Data } },
     ]);
 
-    return result.response.text().trim();
+    const meta = result.response.usageMetadata;
+    return {
+      text:  result.response.text().trim(),
+      model: modelName,
+      usage: {
+        prompt_tokens:     meta?.promptTokenCount     ?? 0,
+        completion_tokens: meta?.candidatesTokenCount ?? 0,
+        total_tokens:      meta?.totalTokenCount      ?? 0,
+      },
+    };
   }
 
   async embed(texts: string[], _model?: string): Promise<number[][]> {

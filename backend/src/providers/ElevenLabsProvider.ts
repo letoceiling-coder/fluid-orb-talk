@@ -86,7 +86,7 @@ export class ElevenLabsProvider extends BaseProvider {
     return res.voices.map((v) => ({ voice_id: v.voice_id, name: v.name ?? '' }));
   }
 
-  async chat(_messages: Message[], _config: ChatConfig): Promise<string> {
+  async chat(_messages: Message[], _config: ChatConfig): Promise<import('./BaseProvider.js').ChatResult> {
     throw new Error('ElevenLabsProvider: chat not supported.');
   }
 
@@ -94,12 +94,12 @@ export class ElevenLabsProvider extends BaseProvider {
     _messages: Message[],
     _config: ChatConfig,
     _onChunk: (chunk: string) => void,
-    _onDone: () => void,
+    _onDone:  (usage: import('../types/gateway.types.js').TokenUsage) => void,
   ): Promise<void> {
     throw new Error('ElevenLabsProvider: chatStream not supported.');
   }
 
-  async vision(_imageBase64: string, _prompt: string, _config: VisionConfig): Promise<string> {
+  async vision(_imageBase64: string, _prompt: string, _config: VisionConfig): Promise<import('./BaseProvider.js').VisionResult> {
     throw new Error('ElevenLabsProvider: vision not supported.');
   }
 

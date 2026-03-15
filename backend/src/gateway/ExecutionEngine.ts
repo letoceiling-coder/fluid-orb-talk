@@ -2,7 +2,7 @@ import { SuperRouter } from './SuperRouter.js';
 import type { BaseProvider } from '../providers/BaseProvider.js';
 import type { ElevenLabsProvider } from '../providers/ElevenLabsProvider.js';
 import type { ReplicateProvider } from '../providers/ReplicateProvider.js';
-import type { GatewayRequest, GatewayResponse, TaskType } from '../types/gateway.types.js';
+import type { GatewayRequest, GatewayResponse, TaskType, TokenUsage } from '../types/gateway.types.js';
 import type { Message } from '../types/provider.types.js';
 
 /**
@@ -118,13 +118,15 @@ export class ExecutionEngine {
       systemPrompt: (payload.config?.systemPrompt as string | undefined),
     };
 
-    const text = await provider.chat(messages, config);
+    const result = await provider.chat(messages, config);
 
     return {
       success:  true,
       provider: provider.name,
       taskType: request.taskType,
-      data:     { response: text },
+      model:    result.model,
+      usage:    result.usage,
+      data:     { response: result.text },
     };
   }
 
@@ -137,7 +139,7 @@ export class ExecutionEngine {
       config?: Record<string, unknown>;
     };
 
-    const description = await provider.vision(
+    const result = await provider.vision(
       frame,
       prompt ?? 'Describe what you see in this image in detail.',
       {
@@ -151,7 +153,9 @@ export class ExecutionEngine {
       success:  true,
       provider: provider.name,
       taskType: request.taskType,
-      data:     { response: description },
+      model:    result.model,
+      usage:    result.usage,
+      data:     { response: result.text },
     };
   }
 
@@ -251,8 +255,8 @@ export class ExecutionEngine {
   async executeChatStream(
     request: GatewayRequest,
     onChunk: (text: string, provider: string) => void,
-    onDone:  (provider: string) => void,
-    onError: (err: string)     => void,
+    onDone:  (provider: string, usage: TokenUsage) => void,
+    onError: (err: string) => void,
   ): Promise<void> {
     const chain = this.router.getFallbackChain(request.taskType);
 
@@ -284,8 +288,8 @@ export class ExecutionEngine {
         await provider.chatStream(
           messages,
           config,
-          (chunk) => onChunk(chunk, provider.name),
-          ()      => onDone(provider.name),
+          (chunk)        => onChunk(chunk, provider.name),
+          (usage)        => onDone(provider.name, usage),
         );
         return;
       } catch (err) {

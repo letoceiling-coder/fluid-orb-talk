@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { BaseProvider } from './BaseProvider.js';
-import type { TaskType } from '../types/gateway.types.js';
+import type { ChatResult, VisionResult } from './BaseProvider.js';
+import type { TaskType, TokenUsage } from '../types/gateway.types.js';
 import type {
   Message,
   ChatConfig,
@@ -28,7 +29,7 @@ export class AnthropicProvider extends BaseProvider {
     this.client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '' });
   }
 
-  async chat(messages: Message[], config: ChatConfig = {}): Promise<string> {
+  async chat(messages: Message[], config: ChatConfig = {}): Promise<ChatResult> {
     const model = config.model ?? CHAT_MODEL;
 
     const systemMsg = config.systemPrompt
@@ -36,28 +37,33 @@ export class AnthropicProvider extends BaseProvider {
 
     const userMessages = messages
       .filter((m) => m.role !== 'system')
-      .map((m) => ({
-        role:    m.role as 'user' | 'assistant',
-        content: m.content,
-      }));
+      .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
 
     const res = await this.client.messages.create({
       model,
-      max_tokens: config.maxTokens ?? 1024,
-      system:     systemMsg,
-      messages:   userMessages,
+      max_tokens:  config.maxTokens  ?? 1024,
+      system:      systemMsg,
+      messages:    userMessages,
       temperature: config.temperature ?? 0.7,
     });
 
     const block = res.content[0];
-    return block?.type === 'text' ? block.text.trim() : '';
+    return {
+      text:  block?.type === 'text' ? block.text.trim() : '',
+      model: res.model,
+      usage: {
+        prompt_tokens:     res.usage.input_tokens,
+        completion_tokens: res.usage.output_tokens,
+        total_tokens:      res.usage.input_tokens + res.usage.output_tokens,
+      },
+    };
   }
 
   async chatStream(
     messages: Message[],
     config: ChatConfig = {},
     onChunk: (chunk: string) => void,
-    onDone: () => void,
+    onDone:  (usage: TokenUsage) => void,
   ): Promise<void> {
     const model = config.model ?? CHAT_MODEL;
 
@@ -66,10 +72,7 @@ export class AnthropicProvider extends BaseProvider {
 
     const userMessages = messages
       .filter((m) => m.role !== 'system')
-      .map((m) => ({
-        role:    m.role as 'user' | 'assistant',
-        content: m.content,
-      }));
+      .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
 
     const stream = await this.client.messages.create({
       model,
@@ -79,20 +82,30 @@ export class AnthropicProvider extends BaseProvider {
       stream:     true,
     });
 
+    let inputTokens = 0;
+    let outputTokens = 0;
+
     for await (const event of stream) {
-      if (
-        event.type === 'content_block_delta' &&
-        event.delta.type === 'text_delta'
-      ) {
+      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
         onChunk(event.delta.text);
+      }
+      if (event.type === 'message_delta' && event.usage) {
+        outputTokens = event.usage.output_tokens ?? 0;
+      }
+      if (event.type === 'message_start' && event.message.usage) {
+        inputTokens = event.message.usage.input_tokens ?? 0;
       }
     }
 
-    onDone();
+    onDone({
+      prompt_tokens:     inputTokens,
+      completion_tokens: outputTokens,
+      total_tokens:      inputTokens + outputTokens,
+    });
   }
 
   private detectMimeType(base64: string): 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' {
-    const raw = base64.startsWith('data:') ? base64.split(',')[1] : base64;
+    const raw    = base64.startsWith('data:') ? base64.split(',')[1] : base64;
     const header = raw.slice(0, 12);
     if (header.startsWith('iVBORw0KGgo')) return 'image/png';
     if (header.startsWith('R0lGOD'))       return 'image/gif';
@@ -100,14 +113,10 @@ export class AnthropicProvider extends BaseProvider {
     return 'image/jpeg';
   }
 
-  async vision(imageBase64: string, prompt: string, config: VisionConfig = {}): Promise<string> {
-    const model = config.model ?? VISION_MODEL;
-
-    const base64Data = imageBase64.startsWith('data:')
-      ? imageBase64.split(',')[1]
-      : imageBase64;
-
-    const mediaType = this.detectMimeType(base64Data);
+  async vision(imageBase64: string, prompt: string, config: VisionConfig = {}): Promise<VisionResult> {
+    const model      = config.model ?? VISION_MODEL;
+    const base64Data = imageBase64.startsWith('data:') ? imageBase64.split(',')[1] : imageBase64;
+    const mediaType  = this.detectMimeType(base64Data);
 
     const res = await this.client.messages.create({
       model,
@@ -116,18 +125,23 @@ export class AnthropicProvider extends BaseProvider {
         {
           role: 'user',
           content: [
-            {
-              type:   'image',
-              source: { type: 'base64', media_type: mediaType, data: base64Data },
-            },
-            { type: 'text', text: prompt || 'Describe what you see.' },
+            { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64Data } },
+            { type: 'text',  text:   prompt || 'Describe what you see.' },
           ],
         },
       ],
     });
 
     const block = res.content[0];
-    return block?.type === 'text' ? block.text.trim() : '';
+    return {
+      text:  block?.type === 'text' ? block.text.trim() : '',
+      model: res.model,
+      usage: {
+        prompt_tokens:     res.usage.input_tokens,
+        completion_tokens: res.usage.output_tokens,
+        total_tokens:      res.usage.input_tokens + res.usage.output_tokens,
+      },
+    };
   }
 
   async embed(_texts: string[], _model: string): Promise<number[][]> {

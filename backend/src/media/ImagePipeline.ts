@@ -44,7 +44,7 @@ export class ImagePipeline {
 
   async generate(config: ImageGenerationConfig): Promise<ImageGenerationResult> {
     // TODO Phase 4: route to correct provider based on config.model
-    const provider = this.registry.getProvider('replicate') as ReplicateProvider;
+    const provider = this.registry.getProvider('replicate') as unknown as ReplicateProvider;
     const url = await provider.generateImage(config.prompt, { model: config.model ?? 'flux-pro' });
 
     return {

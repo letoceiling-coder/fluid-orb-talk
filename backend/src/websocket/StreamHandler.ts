@@ -34,12 +34,13 @@ export class StreamHandler {
           };
           this.send(event);
         },
-        // onDone
-        (providerName) => {
+        // onDone — includes token usage from provider
+        (providerName, usage) => {
           const event: ChatDoneEvent = {
-            type: 'chat/done',
+            type:     'chat/done',
             sessionId,
             provider: providerName,
+            usage,
           };
           this.send(event);
         },
