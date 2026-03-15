@@ -7,10 +7,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 const agents = [
-  { name: "Marketing Agent", status: "Active", capabilities: ["Vision", "Code", "Browsing"], desc: "Generates marketing campaigns, analyzes competitors" },
-  { name: "Video Creator", status: "Active", capabilities: ["Vision", "Video", "Image"], desc: "Creates and edits video content from prompts" },
-  { name: "Research Agent", status: "Idle", capabilities: ["Browsing", "Analytics"], desc: "Deep web research with source verification" },
-  { name: "Data Analyst", status: "Idle", capabilities: ["Code", "Analytics"], desc: "Analyzes datasets and generates reports" },
+  { name: "Video Creator Agent", status: "Active", capabilities: ["Vision", "Video", "Image"], desc: "Creates cinematic video content from text prompts, handles editing and transitions" },
+  { name: "Image Creator Agent", status: "Active", capabilities: ["Vision", "Image", "Code"], desc: "Generates product shots, artwork, and marketing visuals with style control" },
+  { name: "Research Assistant", status: "Active", capabilities: ["Browsing", "Analytics", "Code"], desc: "Deep web research with source verification and automated report generation" },
+  { name: "Marketing Agent", status: "Idle", capabilities: ["Vision", "Code", "Browsing"], desc: "Generates marketing campaigns, analyzes competitors" },
+  { name: "Data Analyst", status: "Idle", capabilities: ["Code", "Analytics"], desc: "Analyzes datasets and generates interactive reports" },
 ];
 
 const capIcons: Record<string, any> = { Vision: Eye, Browsing: Globe, Code: Code, Image: Image, Video: Video, Analytics: BarChart3 };
