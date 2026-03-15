@@ -1,5 +1,7 @@
 import { SuperRouter } from './SuperRouter.js';
 import type { BaseProvider } from '../providers/BaseProvider.js';
+import type { ElevenLabsProvider } from '../providers/ElevenLabsProvider.js';
+import type { ReplicateProvider } from '../providers/ReplicateProvider.js';
 import type { GatewayRequest, GatewayResponse, TaskType } from '../types/gateway.types.js';
 import type { Message } from '../types/provider.types.js';
 
@@ -155,23 +157,49 @@ export class ExecutionEngine {
 
   // ── Image generation ─────────────────────────────────────────────────────
 
-  private async executeImage(_request: GatewayRequest, provider: BaseProvider): Promise<GatewayResponse> {
+  private async executeImage(request: GatewayRequest, provider: BaseProvider): Promise<GatewayResponse> {
+    const { prompt, model, width, height, steps } = request.payload as {
+      prompt: string;
+      model?: string;
+      width?: number;
+      height?: number;
+      steps?: number;
+    };
+
+    if (!prompt) throw new Error('image/generate: prompt is required');
+
+    const rep = provider as unknown as ReplicateProvider;
+    if (typeof rep.generateImage !== 'function') {
+      throw new Error(`${provider.name} does not support image generation`);
+    }
+
+    const imageUrl = await rep.generateImage(prompt, { model, width, height, steps });
+
     return {
       success:  true,
       provider: provider.name,
-      taskType: _request.taskType,
-      data:     { message: 'Image generation coming in Phase 3' },
+      taskType: request.taskType,
+      data:     { url: imageUrl, prompt },
     };
   }
 
   // ── Video generation ─────────────────────────────────────────────────────
 
-  private async executeVideo(_request: GatewayRequest, provider: BaseProvider): Promise<GatewayResponse> {
+  private async executeVideo(request: GatewayRequest, provider: BaseProvider): Promise<GatewayResponse> {
+    const { prompt, model } = request.payload as { prompt: string; model?: string };
+    if (!prompt) throw new Error('video/generate: prompt is required');
+
+    const rep = provider as unknown as ReplicateProvider;
+    if (typeof rep.generateVideo !== 'function') {
+      throw new Error(`${provider.name} does not support video generation`);
+    }
+
+    const videoUrl = await rep.generateVideo(prompt, { model });
     return {
       success:  true,
       provider: provider.name,
-      taskType: _request.taskType,
-      data:     { message: 'Video generation coming in Phase 3' },
+      taskType: request.taskType,
+      data:     { url: videoUrl, prompt },
     };
   }
 
@@ -180,16 +208,25 @@ export class ExecutionEngine {
   private async executeAudio(request: GatewayRequest, provider: BaseProvider): Promise<GatewayResponse> {
     if (request.taskType === 'audio/tts') {
       const { text, config } = request.payload as { text: string; config?: Record<string, unknown> };
-      const audio = await provider.tts(text, {
-        voice:    config?.voice as string | undefined,
+      if (!text) throw new Error('audio/tts: text is required');
+
+      const ttsConfig = {
+        voice:    config?.voice    as string | undefined,
         language: config?.language as string | undefined,
-        speed:    config?.speed as number | undefined,
-      });
+        speed:    config?.speed    as number | undefined,
+        model:    config?.model    as string | undefined,
+      };
+
+      const audio = await provider.tts(text, ttsConfig);
       return {
         success:  true,
         provider: provider.name,
         taskType: request.taskType,
-        data:     { audio: audio.toString('base64') },
+        data:     {
+          audio:    audio.toString('base64'),
+          format:   'mp3',
+          size:     audio.length,
+        },
       };
     }
 
@@ -203,6 +240,61 @@ export class ExecutionEngine {
       taskType: request.taskType,
       data:     { transcript },
     };
+  }
+
+  // ── Streaming chat ────────────────────────────────────────────────────────
+
+  /**
+   * Streams chat response via provider.chatStream().
+   * Calls onChunk for each text delta, onDone when complete.
+   */
+  async executeChatStream(
+    request: GatewayRequest,
+    onChunk: (text: string, provider: string) => void,
+    onDone:  (provider: string) => void,
+    onError: (err: string)     => void,
+  ): Promise<void> {
+    const chain = this.router.getFallbackChain(request.taskType);
+
+    for (const provider of chain) {
+      try {
+        const available = await provider.isAvailable();
+        if (!available) continue;
+
+        const payload = request.payload as {
+          messages?: Message[];
+          message?:  string;
+          model?:    string;
+          config?:   Record<string, unknown>;
+        };
+
+        let messages: Message[] = Array.isArray(payload.messages) ? payload.messages : [];
+        if (!messages.length && payload.message) {
+          messages = [{ role: 'user', content: String(payload.message) }];
+        }
+        if (!messages.length) throw new Error('messages required');
+
+        const config = {
+          model:       payload.model,
+          temperature: payload.config?.temperature as number | undefined,
+          maxTokens:   payload.config?.maxTokens   as number | undefined,
+          systemPrompt: payload.config?.systemPrompt as string | undefined,
+        };
+
+        await provider.chatStream(
+          messages,
+          config,
+          (chunk) => onChunk(chunk, provider.name),
+          ()      => onDone(provider.name),
+        );
+        return;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[ExecutionEngine] stream ${provider.name} failed: ${msg}`);
+      }
+    }
+
+    onError('All providers failed for streaming');
   }
 
   // ── Embeddings ────────────────────────────────────────────────────────────

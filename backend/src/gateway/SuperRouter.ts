@@ -26,7 +26,7 @@ export class SuperRouter {
     'text/reasoning': ['openai', 'anthropic', 'google'],
     'vision/analyze': ['openai', 'anthropic', 'google'],
     'embed':          ['openai', 'google'],
-    'audio/tts':      ['openai'],
+    'audio/tts':      ['elevenlabs', 'openai'],
     'audio/stt':      ['openai'],
     'image/generate': ['replicate'],
     'video/generate': ['replicate'],
