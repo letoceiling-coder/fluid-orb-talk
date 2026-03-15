@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, MessageSquare, Image, Mic, BarChart3, Bot, Wrench, Database,
   Key, CreditCard, Coins, HardDrive, FileText, Activity, Zap, ShoppingBag, Settings, Layers,
-  Video, Waves, Radio, Sparkles, PenTool
+  Video, Waves, Radio, Sparkles, PenTool, Library, Workflow
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -29,9 +29,11 @@ const navGroups = [
     ],
   },
   {
-    label: "Canvas",
+    label: "Canvas & AI",
     items: [
       { title: "AI Creation Canvas", url: "/ai-canvas", icon: PenTool },
+      { title: "AI Model Hub", url: "/model-hub", icon: Library },
+      { title: "AI Automation", url: "/automation", icon: Workflow },
     ],
   },
   {

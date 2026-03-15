@@ -28,6 +28,8 @@ import VoiceAssistantPage from "./pages/VoiceAssistantPage";
 import LiveAIMode from "./pages/LiveAIMode";
 import MultimodalChat from "./pages/MultimodalChat";
 import AICreationCanvas from "./pages/AICreationCanvas";
+import AIModelHub from "./pages/AIModelHub";
+import AIAutomationBuilder from "./pages/AIAutomationBuilder";
 
 const queryClient = new QueryClient();
 
@@ -62,6 +64,8 @@ const App = () => (
             <Route path="/live-ai" element={<LiveAIMode />} />
             <Route path="/multimodal-chat" element={<MultimodalChat />} />
             <Route path="/ai-canvas" element={<AICreationCanvas />} />
+            <Route path="/model-hub" element={<AIModelHub />} />
+            <Route path="/automation" element={<AIAutomationBuilder />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
