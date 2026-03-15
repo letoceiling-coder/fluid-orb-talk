@@ -30,6 +30,8 @@ import MultimodalChat from "./pages/MultimodalChat";
 import AICreationCanvas from "./pages/AICreationCanvas";
 import AIModelHub from "./pages/AIModelHub";
 import AIAutomationBuilder from "./pages/AIAutomationBuilder";
+import AISuperRouter from "./pages/AISuperRouter";
+import DemoMediaGenerator from "./pages/DemoMediaGenerator";
 
 const queryClient = new QueryClient();
 
@@ -66,6 +68,8 @@ const App = () => (
             <Route path="/ai-canvas" element={<AICreationCanvas />} />
             <Route path="/model-hub" element={<AIModelHub />} />
             <Route path="/automation" element={<AIAutomationBuilder />} />
+            <Route path="/super-router" element={<AISuperRouter />} />
+            <Route path="/demo-media" element={<DemoMediaGenerator />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>

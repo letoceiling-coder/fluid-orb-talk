@@ -22,23 +22,33 @@ const initialNodes: Node[] = [
   {
     id: "1",
     type: "canvasNode",
-    position: { x: 100, y: 200 },
-    data: { label: "Prompt", nodeType: "prompt", settings: { text: "" } },
+    position: { x: 50, y: 200 },
+    data: { label: "Prompt", nodeType: "prompt", settings: { text: "cyberpunk city at night" } },
   },
   {
     id: "2",
     type: "canvasNode",
-    position: { x: 420, y: 200 },
-    data: {
-      label: "Image Generator",
-      nodeType: "image-generator",
-      settings: { model: "stable-diffusion-xl", width: 1024, height: 1024, guidanceScale: 7.5, steps: 30, seed: -1 },
-    },
+    position: { x: 320, y: 200 },
+    data: { label: "Image Generator", nodeType: "image-generator", settings: { model: "flux-pro", width: 1024, height: 1024, guidanceScale: 7.5, steps: 30, seed: -1 } },
+  },
+  {
+    id: "3",
+    type: "canvasNode",
+    position: { x: 590, y: 200 },
+    data: { label: "Upscale", nodeType: "upscale", settings: { scale: 2, model: "real-esrgan" } },
+  },
+  {
+    id: "4",
+    type: "canvasNode",
+    position: { x: 860, y: 200 },
+    data: { label: "Video Generator", nodeType: "video-generator", settings: { duration: 4, fps: 24, resolution: "1080p", style: "cinematic" } },
   },
 ];
 
 const initialEdges: Edge[] = [
   { id: "e1-2", source: "1", target: "2", animated: true, style: { stroke: "hsl(217 91% 60%)", strokeWidth: 2 } },
+  { id: "e2-3", source: "2", target: "3", animated: true, style: { stroke: "hsl(217 91% 60%)", strokeWidth: 2 } },
+  { id: "e3-4", source: "3", target: "4", animated: true, style: { stroke: "hsl(217 91% 60%)", strokeWidth: 2 } },
 ];
 
 let nodeId = 10;

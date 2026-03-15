@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, MessageSquare, Image, Mic, BarChart3, Bot, Wrench, Database,
   Key, CreditCard, Coins, HardDrive, FileText, Activity, Zap, ShoppingBag, Settings, Layers,
-  Video, Waves, Radio, Sparkles, PenTool, Library, Workflow
+  Video, Waves, Radio, Sparkles, PenTool, Library, Workflow, Route, Clapperboard
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -67,6 +67,8 @@ const navGroups = [
     label: "Pro",
     items: [
       { title: "AI Gateway Pro", url: "/gateway-pro", icon: Zap },
+      { title: "AI Super Router", url: "/super-router", icon: Route },
+      { title: "Demo Media", url: "/demo-media", icon: Clapperboard },
       { title: "Marketplace", url: "/marketplace", icon: ShoppingBag },
       { title: "Settings", url: "/settings", icon: Settings },
     ],
