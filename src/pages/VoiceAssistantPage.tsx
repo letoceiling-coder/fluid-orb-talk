@@ -2,15 +2,10 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mic, MicOff, Volume2, X, Settings2, Waves } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { voiceService } from "@/services/VoiceService";
+import { assistantService } from "@/services/AssistantService";
 
 type OrbState = "idle" | "listening" | "processing" | "speaking";
-
-const cannedResponses = [
-  "I'd be happy to help you with that. Based on what I understand, here's what I think we should consider...",
-  "That's an interesting question. Let me think about this for a moment. The key factors here are...",
-  "I can see a few different approaches to this. The most effective one would likely involve...",
-  "Great observation! From my analysis, I'd suggest focusing on the following aspects...",
-];
 
 export default function VoiceAssistantPage() {
   const [orbState, setOrbState] = useState<OrbState>("idle");
@@ -19,6 +14,7 @@ export default function VoiceAssistantPage() {
   const [history, setHistory] = useState<Array<{ role: "user" | "assistant"; text: string }>>([]);
   const [waveformData, setWaveformData] = useState<number[]>(Array(40).fill(0.1));
   const waveIntervalRef = useRef<ReturnType<typeof setInterval>>();
+  const historyRef = useRef<Array<{ role: "user" | "assistant"; text: string }>>([]);
 
   const generateWaveform = useCallback((intensity: number) => {
     return Array(40).fill(0).map(() => Math.random() * intensity + 0.05);
@@ -36,47 +32,69 @@ export default function VoiceAssistantPage() {
     return () => { if (waveIntervalRef.current) clearInterval(waveIntervalRef.current); };
   }, [orbState, generateWaveform]);
 
+  useEffect(() => { historyRef.current = history; }, [history]);
+
+  useEffect(() => {
+    return () => { voiceService.cancel(); };
+  }, []);
+
+  const processTranscript = useCallback(async (finalText: string) => {
+    if (!finalText.trim()) return;
+    voiceService.stopListening();
+    setOrbState("processing");
+
+    const userEntry = { role: "user" as const, text: finalText };
+    setHistory((prev) => [...prev, userEntry]);
+
+    const messages = [
+      ...historyRef.current.map((m) => ({ role: m.role, content: m.text })),
+      { role: "user" as const, content: finalText },
+    ];
+
+    try {
+      const result = await assistantService.sendMessage(messages);
+      const respText = result.message;
+
+      setOrbState("speaking");
+      setResponse(respText);
+      setHistory((prev) => [...prev, { role: "assistant", text: respText }]);
+
+      await voiceService.speak(respText).catch(() => undefined);
+    } catch {
+      setResponse("Connection error. Check backend.");
+    } finally {
+      setTimeout(() => {
+        setOrbState("idle");
+        setResponse("");
+      }, 500);
+    }
+  }, []);
+
   const startVoice = useCallback(() => {
     if (orbState !== "idle") return;
-
     setOrbState("listening");
     setTranscript("");
     setResponse("");
 
-    // Simulate speech recognition
-    const phrases = ["Can you help me understand", "how neural networks", "process visual information?"];
-    let i = 0;
-    const typeInterval = setInterval(() => {
-      if (i < phrases.length) {
-        setTranscript((prev) => (prev ? prev + " " : "") + phrases[i]);
-        i++;
-      } else {
-        clearInterval(typeInterval);
-        const fullTranscript = phrases.join(" ");
-        setHistory((prev) => [...prev, { role: "user", text: fullTranscript }]);
+    if (!voiceService.supported) {
+      // Fallback: simulate if browser doesn't support speech recognition
+      const msg = "Voice recognition not supported in this browser.";
+      processTranscript(msg);
+      return;
+    }
 
-        setOrbState("processing");
-        setTimeout(() => {
-          setOrbState("speaking");
-          const resp = cannedResponses[Math.floor(Math.random() * cannedResponses.length)];
-          let j = 0;
-          const words = resp.split(" ");
-          const speakInterval = setInterval(() => {
-            if (j < words.length) {
-              setResponse((prev) => (prev ? prev + " " : "") + words[j]);
-              j++;
-            } else {
-              clearInterval(speakInterval);
-              setHistory((prev) => [...prev, { role: "assistant", text: resp }]);
-              setTimeout(() => setOrbState("idle"), 500);
-            }
-          }, 60);
-        }, 2000);
-      }
-    }, 800);
-  }, [orbState]);
+    voiceService.startListening(
+      (interim) => setTranscript(interim),
+      (final) => {
+        setTranscript(final);
+        processTranscript(final);
+      },
+      () => setOrbState("idle")
+    );
+  }, [orbState, processTranscript]);
 
   const stopVoice = useCallback(() => {
+    voiceService.cancel();
     setOrbState("idle");
     setTranscript("");
     setResponse("");

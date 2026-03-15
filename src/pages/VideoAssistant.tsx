@@ -5,15 +5,9 @@ import {
   Zap, Maximize2, Minimize2, Send, X, Aperture, Eye, MessageSquare
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { visionService } from "@/services/VisionService";
 
 type AnalysisState = "idle" | "scanning" | "analyzing" | "complete";
-
-const cannedAnalyses = [
-  "I can see what appears to be a workspace environment. There are several objects on the surface including what looks like electronic devices and papers.",
-  "The scene shows an indoor setting with moderate lighting. I detect geometric shapes and text elements in the frame.",
-  "I'm observing a digital interface with multiple interactive elements. The color palette is predominantly dark with blue accent highlights.",
-  "The captured frame shows a structured layout with navigation elements on the left and content area taking up the main viewport.",
-];
 
 export default function VideoAssistant() {
   const [cameraActive, setCameraActive] = useState(false);
@@ -59,25 +53,29 @@ export default function VideoAssistant() {
     }
   }, [facingMode, cameraActive, stopCamera, startCamera]);
 
-  const captureFrame = useCallback(() => {
+  const captureFrame = useCallback(async () => {
     if (!canvasRef.current || !videoRef.current) return;
     const canvas = canvasRef.current;
     canvas.width = 320;
     canvas.height = 180;
     const ctx = canvas.getContext("2d");
-    if (ctx && videoRef.current.videoWidth) {
-      ctx.drawImage(videoRef.current, 0, 0, 320, 180);
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
-      setCapturedFrames((prev) => [dataUrl, ...prev].slice(0, 6));
-    }
+    if (!ctx || !videoRef.current.videoWidth) return;
 
-    // Simulate analysis
+    ctx.drawImage(videoRef.current, 0, 0, 320, 180);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+    setCapturedFrames((prev) => [dataUrl, ...prev].slice(0, 6));
+
     setAnalysisState("scanning");
     setTimeout(() => setAnalysisState("analyzing"), 800);
-    setTimeout(() => {
-      setCurrentAnalysis(cannedAnalyses[Math.floor(Math.random() * cannedAnalyses.length)]);
-      setAnalysisState("complete");
-    }, 2500);
+
+    try {
+      const result = await visionService.analyzeImage(dataUrl, "Describe what you see in this image in detail.");
+      setCurrentAnalysis(result.description);
+    } catch {
+      setCurrentAnalysis("Unable to connect to vision API. Check backend connection.");
+    }
+
+    setAnalysisState("complete");
     setTimeout(() => setAnalysisState("idle"), 6000);
   }, []);
 

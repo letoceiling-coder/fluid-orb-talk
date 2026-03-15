@@ -5,6 +5,10 @@ import {
   Aperture, MessageSquare, Waves, Eye, X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cameraService } from "@/services/CameraService";
+import { voiceService } from "@/services/VoiceService";
+import { visionService } from "@/services/VisionService";
+import { assistantService } from "@/services/AssistantService";
 
 type AIState = "idle" | "listening" | "analyzing" | "responding";
 
@@ -15,12 +19,6 @@ interface Message {
   timestamp: Date;
 }
 
-const cannedConversation = [
-  { role: "assistant" as const, text: "I can see your camera feed. I'm ready to analyze what I see and respond to your voice commands." },
-  { role: "assistant" as const, text: "I notice several interesting elements in the frame. The lighting appears to be artificial, and I can detect what looks like a workspace setup." },
-  { role: "assistant" as const, text: "Based on my visual analysis combined with your question, I'd suggest organizing the visible elements by category for better workflow efficiency." },
-];
-
 export default function LiveAIMode() {
   const [cameraActive, setCameraActive] = useState(false);
   const [micActive, setMicActive] = useState(false);
@@ -29,9 +27,8 @@ export default function LiveAIMode() {
   const [fullscreen, setFullscreen] = useState(false);
   const [waveform, setWaveform] = useState<number[]>(Array(30).fill(0.05));
   const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const responseIndex = useRef(0);
+  const historyRef = useRef<Array<{ role: "user" | "assistant"; content: string }>>([]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -49,32 +46,73 @@ export default function LiveAIMode() {
     return () => clearInterval(interval);
   }, [aiState]);
 
-  const startCamera = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-      if (videoRef.current) videoRef.current.srcObject = stream;
-      streamRef.current = stream;
-      setCameraActive(true);
-      setMessages((prev) => [...prev, {
-        id: crypto.randomUUID(),
-        role: "system",
-        text: "Camera activated. AI vision is now monitoring the feed.",
-        timestamp: new Date(),
-      }]);
-    } catch {
-      setCameraActive(true);
-    }
+  const addMessage = useCallback((role: Message["role"], text: string) => {
+    const msg: Message = { id: crypto.randomUUID(), role, text, timestamp: new Date() };
+    setMessages((prev) => [...prev, msg]);
+    return msg;
   }, []);
 
+  const startCamera = useCallback(async () => {
+    if (!videoRef.current) return;
+    try {
+      await cameraService.startCamera(videoRef.current);
+      setCameraActive(true);
+      addMessage("system", "Camera activated. AI vision is now monitoring the feed.");
+    } catch {
+      addMessage("system", "Camera unavailable — running without video feed.");
+      setCameraActive(true);
+    }
+  }, [addMessage]);
+
   const stopCamera = useCallback(() => {
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
-    if (videoRef.current) videoRef.current.srcObject = null;
+    cameraService.stopCamera();
     setCameraActive(false);
   }, []);
 
+  const handleVoiceTranscript = useCallback(async (text: string) => {
+    voiceService.stopListening();
+    setMicActive(false);
+    setAIState("analyzing");
+
+    addMessage("user", text);
+    historyRef.current.push({ role: "user", content: text });
+
+    // If camera is active, capture frame and analyze visually
+    let visionContext = "";
+    if (cameraActive && videoRef.current) {
+      try {
+        const frame = cameraService.captureFrame();
+        if (frame) {
+          const vision = await visionService.analyzeImage(frame, text);
+          visionContext = `[Visual context: ${vision.description}]`;
+        }
+      } catch {
+        // Vision failed, proceed with text only
+      }
+    }
+
+    setAIState("responding");
+
+    const contextMessages = [
+      ...historyRef.current.slice(0, -1),
+      { role: "user" as const, content: visionContext ? `${text}\n${visionContext}` : text },
+    ];
+
+    try {
+      const result = await assistantService.sendMessage(contextMessages);
+      addMessage("assistant", result.message);
+      historyRef.current.push({ role: "assistant", content: result.message });
+      await voiceService.speak(result.message).catch(() => undefined);
+    } catch {
+      addMessage("assistant", "Connection error. Please check backend.");
+    } finally {
+      setAIState("idle");
+    }
+  }, [cameraActive, addMessage]);
+
   const toggleMic = useCallback(() => {
     if (micActive) {
+      voiceService.stopListening();
       setMicActive(false);
       setAIState("idle");
       return;
@@ -83,36 +121,23 @@ export default function LiveAIMode() {
     setMicActive(true);
     setAIState("listening");
 
-    // Simulate: listen → user speaks → analyzing → AI responds
-    setTimeout(() => {
-      setMessages((prev) => [...prev, {
-        id: crypto.randomUUID(),
-        role: "user",
-        text: "What can you see in the camera right now? Can you describe the scene?",
-        timestamp: new Date(),
-      }]);
-      setAIState("analyzing");
+    if (!voiceService.supported) {
+      // Fallback placeholder if no speech API
+      setTimeout(() => handleVoiceTranscript("Describe what you see in the camera."), 1000);
+      return;
+    }
 
-      setTimeout(() => {
-        setAIState("responding");
-        const resp = cannedConversation[responseIndex.current % cannedConversation.length];
-        responseIndex.current++;
-        setMessages((prev) => [...prev, {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          text: resp.text,
-          timestamp: new Date(),
-        }]);
+    voiceService.startListening(
+      () => undefined,
+      (final) => handleVoiceTranscript(final),
+      () => { setMicActive(false); setAIState("idle"); }
+    );
+  }, [micActive, handleVoiceTranscript]);
 
-        setTimeout(() => {
-          setAIState("idle");
-          setMicActive(false);
-        }, 3000);
-      }, 2000);
-    }, 2500);
-  }, [micActive]);
-
-  useEffect(() => () => stopCamera(), [stopCamera]);
+  useEffect(() => () => {
+    cameraService.stopCamera();
+    voiceService.cancel();
+  }, []);
 
   return (
     <div className={`flex flex-col h-[calc(100vh-3rem)] bg-background ${fullscreen ? "fixed inset-0 z-50" : ""}`}>

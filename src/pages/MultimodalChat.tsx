@@ -6,6 +6,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { assistantService, type ChatMessage as ServiceMessage } from "@/services/AssistantService";
+import { voiceService } from "@/services/VoiceService";
 
 interface Attachment {
   id: string;
@@ -21,14 +23,6 @@ interface ChatMessage {
   attachments?: Attachment[];
   timestamp: Date;
 }
-
-const cannedResponses: Record<string, string> = {
-  default: "I've analyzed your message. That's a great point — let me elaborate on some key aspects that might be helpful for your use case.",
-  image: "I can see the image you've shared. It appears to contain visual elements that suggest a structured layout. The composition uses contrasting colors and geometric patterns effectively.",
-  document: "I've reviewed the document you uploaded. It contains structured content that I can help you analyze, summarize, or extract key information from.",
-  voice: "I heard your voice message clearly. Based on what you said, let me provide a detailed response that addresses your main points.",
-  video: "I've captured and analyzed the video frame. The scene contains several identifiable elements that I can describe in detail if you'd like.",
-};
 
 export default function MultimodalChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -66,14 +60,19 @@ export default function MultimodalChat() {
     setAttachments((prev) => prev.filter((a) => a.id !== id));
   }, []);
 
-  const sendMessage = useCallback(() => {
+  const buildContext = useCallback((current: ChatMessage[]): ServiceMessage[] => {
+    return current.map((m) => ({ role: m.role, content: m.text }));
+  }, []);
+
+  const sendMessage = useCallback(async () => {
     const text = input.trim();
     if (!text && attachments.length === 0) return;
 
+    const displayText = text || (attachments.length > 0 ? `Sent ${attachments.length} attachment(s)` : "");
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
-      text: text || (attachments.length > 0 ? `Sent ${attachments.length} attachment(s)` : ""),
+      text: displayText,
       attachments: attachments.length > 0 ? [...attachments] : undefined,
       timestamp: new Date(),
     };
@@ -83,27 +82,54 @@ export default function MultimodalChat() {
     setAttachments([]);
     setIsTyping(true);
 
-    // Determine response type
-    const attachType = userMsg.attachments?.[0]?.type;
-    const responseKey = attachType || "default";
-
-    setTimeout(() => {
+    try {
+      const contextMessages = buildContext([...messages, userMsg]);
+      const result = await assistantService.sendMessage(contextMessages);
       setMessages((prev) => [...prev, {
         id: crypto.randomUUID(),
         role: "assistant",
-        text: cannedResponses[responseKey] || cannedResponses.default,
+        text: result.message,
         timestamp: new Date(),
       }]);
+    } catch (e) {
+      setMessages((prev) => [...prev, {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        text: e instanceof Error ? `Error: ${e.message}` : "Connection error. Check backend.",
+        timestamp: new Date(),
+      }]);
+    } finally {
       setIsTyping(false);
-    }, 1500);
-  }, [input, attachments]);
+    }
+  }, [input, attachments, messages, buildContext]);
 
   const toggleRecording = useCallback(() => {
     if (isRecording) {
+      voiceService.stopListening();
       setIsRecording(false);
-      addAttachment("voice", "Voice message (5s)");
+      addAttachment("voice", "Voice message");
+      return;
+    }
+
+    setIsRecording(true);
+    if (voiceService.supported) {
+      voiceService.startListening(
+        () => undefined,
+        (final) => {
+          voiceService.stopListening();
+          setIsRecording(false);
+          if (final.trim()) setInput((prev) => (prev ? prev + " " + final : final));
+        },
+        () => setIsRecording(false)
+      );
+      setTimeout(() => {
+        if (voiceService.listening) {
+          voiceService.stopListening();
+          setIsRecording(false);
+          addAttachment("voice", "Voice message");
+        }
+      }, 8000);
     } else {
-      setIsRecording(true);
       setTimeout(() => {
         setIsRecording(false);
         addAttachment("voice", "Voice message (5s)");
