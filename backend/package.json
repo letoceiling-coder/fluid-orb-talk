@@ -1,0 +1,33 @@
+{
+  "name": "ai-gateway-backend",
+  "version": "0.1.0",
+  "description": "AI Gateway Platform — Backend API (Fastify + TypeScript)",
+  "type": "module",
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only --esm src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.78.0",
+    "@fastify/cors": "^9.0.1",
+    "@fastify/jwt": "^8.0.1",
+    "@fastify/websocket": "^10.0.1",
+    "@google/generative-ai": "^0.24.1",
+    "axios": "^1.7.2",
+    "dotenv": "^16.4.5",
+    "fastify": "^4.28.1",
+    "mysql2": "^3.9.8",
+    "openai": "^4.104.0",
+    "uuid": "^10.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.9",
+    "@types/uuid": "^10.0.0",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.5.3"
+  }
+}
