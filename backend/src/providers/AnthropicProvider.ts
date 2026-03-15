@@ -9,8 +9,8 @@ import type {
   STTConfig,
 } from '../types/provider.types.js';
 
-const CHAT_MODEL   = 'claude-haiku-4-5';
-const VISION_MODEL = 'claude-haiku-4-5';
+const CHAT_MODEL   = 'claude-3-5-haiku-20241022';
+const VISION_MODEL = 'claude-3-5-haiku-20241022';
 
 export class AnthropicProvider extends BaseProvider {
   readonly name = 'anthropic';
