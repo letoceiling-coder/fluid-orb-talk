@@ -23,6 +23,10 @@ import GatewayPro from "./pages/GatewayPro";
 import Marketplace from "./pages/Marketplace";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
+import VideoAssistant from "./pages/VideoAssistant";
+import VoiceAssistantPage from "./pages/VoiceAssistantPage";
+import LiveAIMode from "./pages/LiveAIMode";
+import MultimodalChat from "./pages/MultimodalChat";
 
 const queryClient = new QueryClient();
 
