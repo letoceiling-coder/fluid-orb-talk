@@ -20,6 +20,15 @@ const navGroups = [
     ],
   },
   {
+    label: "AI Assistants",
+    items: [
+      { title: "Video Assistant", url: "/video-assistant", icon: Video },
+      { title: "Voice Assistant", url: "/voice-assistant", icon: Waves },
+      { title: "Live AI Mode", url: "/live-ai", icon: Radio },
+      { title: "Multimodal Chat", url: "/multimodal-chat", icon: Sparkles },
+    ],
+  },
+  {
     label: "Creation",
     items: [
       { title: "Voice Studio", url: "/voice-studio", icon: Mic },

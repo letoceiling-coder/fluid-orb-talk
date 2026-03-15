@@ -56,6 +56,10 @@ const App = () => (
             <Route path="/gateway-pro" element={<GatewayPro />} />
             <Route path="/marketplace" element={<Marketplace />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/video-assistant" element={<VideoAssistant />} />
+            <Route path="/voice-assistant" element={<VoiceAssistantPage />} />
+            <Route path="/live-ai" element={<LiveAIMode />} />
+            <Route path="/multimodal-chat" element={<MultimodalChat />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
