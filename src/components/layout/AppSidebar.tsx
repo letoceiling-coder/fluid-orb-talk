@@ -29,9 +29,11 @@ const navGroups = [
     ],
   },
   {
-    label: "Canvas",
+    label: "Canvas & AI",
     items: [
       { title: "AI Creation Canvas", url: "/ai-canvas", icon: PenTool },
+      { title: "AI Model Hub", url: "/model-hub", icon: Library },
+      { title: "AI Automation", url: "/automation", icon: Workflow },
     ],
   },
   {

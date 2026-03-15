@@ -64,6 +64,8 @@ const App = () => (
             <Route path="/live-ai" element={<LiveAIMode />} />
             <Route path="/multimodal-chat" element={<MultimodalChat />} />
             <Route path="/ai-canvas" element={<AICreationCanvas />} />
+            <Route path="/model-hub" element={<AIModelHub />} />
+            <Route path="/automation" element={<AIAutomationBuilder />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
