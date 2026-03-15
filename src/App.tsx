@@ -68,6 +68,8 @@ const App = () => (
             <Route path="/ai-canvas" element={<AICreationCanvas />} />
             <Route path="/model-hub" element={<AIModelHub />} />
             <Route path="/automation" element={<AIAutomationBuilder />} />
+            <Route path="/super-router" element={<AISuperRouter />} />
+            <Route path="/demo-media" element={<DemoMediaGenerator />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
