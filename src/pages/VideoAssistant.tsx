@@ -1,11 +1,11 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Camera, CameraOff, SwitchCamera, Mic, MicOff, Video, VideoOff,
-  Zap, Maximize2, Minimize2, Send, X, Aperture, Eye, MessageSquare
+  Camera, CameraOff, SwitchCamera, Mic, MicOff, Video,
+  Zap, Maximize2, Minimize2, Aperture, Eye, MessageSquare
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { visionService } from "@/services/VisionService";
+import { VideoAssistantController } from "@/controllers/assistant/VideoAssistantController";
 
 type AnalysisState = "idle" | "scanning" | "analyzing" | "complete";
 
@@ -17,69 +17,84 @@ export default function VideoAssistant() {
   const [currentAnalysis, setCurrentAnalysis] = useState("");
   const [fullscreen, setFullscreen] = useState(false);
   const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const controllerRef = useRef<VideoAssistantController | null>(null);
 
   const startCamera = useCallback(async () => {
+    if (!videoRef.current || !controllerRef.current) return;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode, width: 1280, height: 720 },
-        audio: false,
-      });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-      streamRef.current = stream;
-      setCameraActive(true);
+      await controllerRef.current.initialize(videoRef.current);
+      setCurrentAnalysis("");
     } catch {
-      setCameraActive(true); // Simulate even if camera unavailable
+      // handled by controller callbacks
     }
-  }, [facingMode]);
+  }, []);
 
   const stopCamera = useCallback(() => {
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
-    if (videoRef.current) videoRef.current.srcObject = null;
+    controllerRef.current?.stopCamera();
     setCameraActive(false);
   }, []);
 
-  const switchCamera = useCallback(() => {
+  const switchCamera = useCallback(async () => {
     const next = facingMode === "user" ? "environment" : "user";
     setFacingMode(next);
-    if (cameraActive) {
-      stopCamera();
-      setTimeout(() => startCamera(), 300);
+    if (!videoRef.current || !controllerRef.current) return;
+    try {
+      await controllerRef.current.switchCamera(videoRef.current);
+    } catch {
+      // handled by controller callbacks
     }
-  }, [facingMode, cameraActive, stopCamera, startCamera]);
+  }, [facingMode]);
 
   const captureFrame = useCallback(async () => {
-    if (!canvasRef.current || !videoRef.current) return;
-    const canvas = canvasRef.current;
-    canvas.width = 320;
-    canvas.height = 180;
-    const ctx = canvas.getContext("2d");
-    if (!ctx || !videoRef.current.videoWidth) return;
-
-    ctx.drawImage(videoRef.current, 0, 0, 320, 180);
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
-    setCapturedFrames((prev) => [dataUrl, ...prev].slice(0, 6));
-
+    if (!controllerRef.current) return;
     setAnalysisState("scanning");
-    setTimeout(() => setAnalysisState("analyzing"), 800);
+    setTimeout(() => setAnalysisState("analyzing"), 300);
 
     try {
-      const result = await visionService.analyzeImage(dataUrl, "Describe what you see in this image in detail.");
+      const { frame, result } = await controllerRef.current.captureFrame();
+      setCapturedFrames((prev) => [frame, ...prev].slice(0, 6));
       setCurrentAnalysis(result.description);
+      setAnalysisState("complete");
+      setTimeout(() => setAnalysisState("idle"), 6000);
     } catch {
-      setCurrentAnalysis("Unable to connect to vision API. Check backend connection.");
+      setAnalysisState("idle");
     }
-
-    setAnalysisState("complete");
-    setTimeout(() => setAnalysisState("idle"), 6000);
   }, []);
 
-  useEffect(() => () => stopCamera(), [stopCamera]);
+  useEffect(() => {
+    const controller = new VideoAssistantController({
+      onVisionResult: (result) => {
+        console.log("[VideoAssistant] Vision response:", result);
+      },
+      onStateChange: (state) => {
+        if (state === "CAMERA_READY") setCameraActive(true);
+        if (state === "STOPPED" || state === "CAMERA_ERROR") setCameraActive(false);
+      },
+      onError: (error, state) => {
+        if (state === "CAMERA_ERROR") {
+          setCurrentAnalysis(`Camera error: ${error}`);
+          setAnalysisState("idle");
+        } else {
+          setCurrentAnalysis(`Vision error: ${error}`);
+          setAnalysisState("idle");
+        }
+      },
+    });
+    controllerRef.current = controller;
+
+    const timer = setTimeout(() => {
+      if (videoRef.current) void controller.initialize(videoRef.current);
+    }, 0);
+
+    return () => {
+      clearTimeout(timer);
+      controller.stopAutoScan();
+      controller.stopCamera();
+      controllerRef.current = null;
+    };
+  }, []);
 
   return (
     <div className={`flex flex-col h-[calc(100vh-3rem)] bg-background ${fullscreen ? "fixed inset-0 z-50" : ""}`}>
@@ -124,74 +139,71 @@ export default function VideoAssistant() {
       <div className="flex-1 flex overflow-hidden">
         {/* Camera viewport */}
         <div className="flex-1 relative bg-black/90 flex items-center justify-center">
-          {cameraActive ? (
-            <>
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-cover"
-              />
-              {/* Scanning overlay */}
-              <AnimatePresence>
-                {analysisState === "scanning" && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="absolute inset-0 pointer-events-none"
-                  >
-                    <motion.div
-                      className="absolute left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent"
-                      animate={{ top: ["0%", "100%"] }}
-                      transition={{ duration: 1.5, ease: "linear" }}
-                    />
-                    <div className="absolute inset-4 border border-primary/30 rounded-lg" />
-                    <div className="absolute top-4 left-4 w-6 h-6 border-t-2 border-l-2 border-primary rounded-tl-md" />
-                    <div className="absolute top-4 right-4 w-6 h-6 border-t-2 border-r-2 border-primary rounded-tr-md" />
-                    <div className="absolute bottom-4 left-4 w-6 h-6 border-b-2 border-l-2 border-primary rounded-bl-md" />
-                    <div className="absolute bottom-4 right-4 w-6 h-6 border-b-2 border-r-2 border-primary rounded-br-md" />
-                  </motion.div>
-                )}
-              </AnimatePresence>
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className={`camera-video w-full h-full object-cover transition-opacity duration-300 ${cameraActive ? "opacity-100" : "opacity-0 absolute pointer-events-none"}`}
+          />
+          {/* Scanning overlay */}
+          <AnimatePresence>
+            {cameraActive && analysisState === "scanning" && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 pointer-events-none"
+              >
+                <motion.div
+                  className="absolute left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent"
+                  animate={{ top: ["0%", "100%"] }}
+                  transition={{ duration: 1.5, ease: "linear" }}
+                />
+                <div className="absolute inset-4 border border-primary/30 rounded-lg" />
+                <div className="absolute top-4 left-4 w-6 h-6 border-t-2 border-l-2 border-primary rounded-tl-md" />
+                <div className="absolute top-4 right-4 w-6 h-6 border-t-2 border-r-2 border-primary rounded-tr-md" />
+                <div className="absolute bottom-4 left-4 w-6 h-6 border-b-2 border-l-2 border-primary rounded-bl-md" />
+                <div className="absolute bottom-4 right-4 w-6 h-6 border-b-2 border-r-2 border-primary rounded-br-md" />
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-              {/* AI Detection boxes */}
-              <AnimatePresence>
-                {analysisState === "analyzing" && (
+          {/* AI Detection boxes */}
+          <AnimatePresence>
+            {cameraActive && analysisState === "analyzing" && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 pointer-events-none"
+              >
+                {[
+                  { top: "15%", left: "20%", w: "25%", h: "30%" },
+                  { top: "40%", left: "55%", w: "20%", h: "25%" },
+                  { top: "60%", left: "10%", w: "30%", h: "20%" },
+                ].map((box, i) => (
                   <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="absolute inset-0 pointer-events-none"
+                    key={i}
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: i * 0.3 }}
+                    className="absolute border border-primary/60 rounded-md"
+                    style={{ top: box.top, left: box.left, width: box.w, height: box.h }}
                   >
-                    {[
-                      { top: "15%", left: "20%", w: "25%", h: "30%" },
-                      { top: "40%", left: "55%", w: "20%", h: "25%" },
-                      { top: "60%", left: "10%", w: "30%", h: "20%" },
-                    ].map((box, i) => (
-                      <motion.div
-                        key={i}
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: i * 0.3 }}
-                        className="absolute border border-primary/60 rounded-md"
-                        style={{ top: box.top, left: box.left, width: box.w, height: box.h }}
-                      >
-                        <div className="absolute -top-5 left-0 px-1.5 py-0.5 bg-primary/80 rounded text-[9px] text-primary-foreground font-medium">
-                          Object {i + 1}
-                        </div>
-                      </motion.div>
-                    ))}
+                    <div className="absolute -top-5 left-0 px-1.5 py-0.5 bg-primary/80 rounded text-[9px] text-primary-foreground font-medium">
+                      Object {i + 1}
+                    </div>
                   </motion.div>
-                )}
-              </AnimatePresence>
-            </>
-          ) : (
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+            {!cameraActive && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="flex flex-col items-center gap-4 text-muted-foreground"
+              className="flex flex-col items-center gap-4 text-muted-foreground px-6 text-center"
             >
               <div className="relative">
                 <motion.div
@@ -201,10 +213,21 @@ export default function VideoAssistant() {
                 />
                 <Camera className="h-16 w-16 relative z-10 text-muted-foreground/40" />
               </div>
-              <p className="text-sm">Enable camera to start AI vision analysis</p>
-              <Button onClick={startCamera} className="gap-2">
-                <Camera className="h-4 w-4" /> Start Camera
-              </Button>
+              {currentAnalysis && currentAnalysis.startsWith("Camera error") ? (
+                <>
+                  <p className="text-sm text-destructive/80">{currentAnalysis}</p>
+                  <Button onClick={startCamera} variant="outline" className="gap-2">
+                    <Camera className="h-4 w-4" /> Retry Camera
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm">Enable camera to start AI vision analysis</p>
+                  <Button onClick={startCamera} className="gap-2">
+                    <Camera className="h-4 w-4" /> Start Camera
+                  </Button>
+                </>
+              )}
             </motion.div>
           )}
 

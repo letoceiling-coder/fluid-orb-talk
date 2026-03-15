@@ -1,4 +1,4 @@
-import { DatabaseClient } from '../db/DatabaseClient.js';
+import { PostgresClient } from '../db/PostgresClient.js';
 
 export interface UsageLogEntry {
   provider:         string;
@@ -21,11 +21,11 @@ export interface UsageLogEntry {
  */
 export class UsageLogger {
   private static instance: UsageLogger;
-  private db:      DatabaseClient;
+  private db:      PostgresClient;
   private enabled: boolean;
 
   private constructor() {
-    this.db      = DatabaseClient.getInstance();
+    this.db      = PostgresClient.getInstance();
     this.enabled = process.env.ENABLE_USAGE_LOGGING !== 'false';
   }
 
@@ -42,11 +42,11 @@ export class UsageLogger {
     try {
       await this.db.query(
         `INSERT INTO usage_logs
-           (id, workspace_id, user_id, provider, model, task_type, status,
+           (workspace_id, user_id, provider, model, task_type, status,
             latency_ms, prompt_tokens, completion_tokens, total_tokens,
             error_message, created_at)
          VALUES
-           (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+           ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())`,
         [
           entry.workspaceId        ?? null,
           entry.userId             ?? null,

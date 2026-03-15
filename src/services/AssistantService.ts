@@ -5,10 +5,24 @@ export interface ChatMessage {
   content: string;
 }
 
+export interface TokenUsage {
+  prompt_tokens:     number;
+  completion_tokens: number;
+  total_tokens:      number;
+}
+
 export interface ChatResponse {
-  message: string;
+  message:   string;
+  model?:    string;
+  provider?: string;
+  usage?:    TokenUsage;
+}
+
+export interface SendMessageOptions {
   model?: string;
-  usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+  stream?: boolean;
+  conversation_id?: string;
+  message?: string;
 }
 
 export class AssistantService {
@@ -20,12 +34,16 @@ export class AssistantService {
 
   async sendMessage(
     messages: ChatMessage[],
-    options: { model?: string; stream?: boolean } = {}
+    options: SendMessageOptions = {}
   ): Promise<ChatResponse> {
+    const payload = options.message
+      ? { message: options.message, conversation_id: options.conversation_id, model: options.model, stream: options.stream }
+      : { messages, model: options.model, stream: options.stream, conversation_id: options.conversation_id };
+
     const response = await fetch(`${GATEWAY_BASE}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, ...options }),
+      body: JSON.stringify(payload),
     });
 
     if (!response.ok) {

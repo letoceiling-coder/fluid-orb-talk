@@ -13,8 +13,13 @@ import { authRoutes } from './routes/auth.js';
 import { keysRoutes } from './routes/keys.js';
 import { usageRoutes } from './routes/usage.js';
 import { gatewayRoutes } from './routes/gateway.js';
+import { conversationsRoutes } from './routes/conversations.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
+  if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET must be set');
+  }
+
   const app = Fastify({
     logger: {
       level: process.env.NODE_ENV === 'production' ? 'warn' : 'info',
@@ -28,7 +33,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   await app.register(jwt, {
-    secret: process.env.JWT_SECRET ?? 'fallback-secret-change-in-production',
+    secret: process.env.JWT_SECRET,
   });
 
   await app.register(websocket);
@@ -46,7 +51,9 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   // ── API Routes ───────────────────────────────────────────────────────────
   await app.register(authRoutes,      { prefix: '/api/v1/auth' });
+  await app.register(authRoutes,      { prefix: '/auth' });
   await app.register(keysRoutes,      { prefix: '/api/v1/keys' });
+  await app.register(conversationsRoutes, { prefix: '' });
   await app.register(chatRoutes,      { prefix: '/api/v1/chat' });
   await app.register(visionRoutes,    { prefix: '/api/v1/vision' });
   await app.register(mediaRoutes,     { prefix: '/api/v1/media' });

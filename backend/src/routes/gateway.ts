@@ -15,10 +15,14 @@ import { WSHub } from '../websocket/WSHub.js';
 import { StreamHandler } from '../websocket/StreamHandler.js';
 import type { Message } from '../types/provider.types.js';
 import { v4 as uuidv4 } from 'uuid';
+import { PostgresClient } from '../db/PostgresClient.js';
+import { z } from 'zod';
+import { RedisRateLimiter } from '../security/RedisRateLimiter.js';
 
 interface ChatBody {
   messages?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
   message?:  string;
+  conversation_id?: string;
   model?:    string;
   stream?:   boolean;
 }
@@ -43,20 +47,92 @@ interface TTSBody {
   model?:    string;
 }
 
+const MAX_MESSAGE_CHARS = 20_000;
+
+const chatBodySchema = z.object({
+  conversation_id: z.string().uuid().optional(),
+  message: z.string().max(MAX_MESSAGE_CHARS).optional(),
+  messages: z.array(
+    z.object({
+      role: z.enum(['user', 'assistant', 'system']),
+      content: z.string().max(MAX_MESSAGE_CHARS),
+    }),
+  ).optional(),
+  model: z.string().max(200).optional(),
+  stream: z.boolean().optional(),
+}).refine((v) => Boolean(v.message) || Boolean(v.messages && v.messages.length > 0), {
+  message: 'messages or message is required',
+});
+
+const conversationPageSize = 20;
+
 export async function gatewayRoutes(fastify: FastifyInstance): Promise<void> {
   const gateway = GatewayCore.getInstance();
   const engine  = ExecutionEngine.getInstance();
   const hub     = WSHub.getInstance();
+  const pg      = PostgresClient.getInstance();
+  const rateLimiter = RedisRateLimiter.getInstance();
+
+  const verifyGatewayAccess = async (request: any, reply: any): Promise<void> => {
+    const apiKey = request.headers['x-api-key'] as string | undefined;
+    const configuredApiKey = process.env.GATEWAY_API_KEY;
+
+    if (apiKey && configuredApiKey && apiKey === configuredApiKey) {
+      request.user = { userId: 'gateway_api_key', role: 'service' };
+      return;
+    }
+
+    try {
+      await request.jwtVerify();
+      return;
+    } catch {
+      reply.code(401).send({ error: 'Unauthorized' });
+    }
+  };
 
   // ── POST /chat ────────────────────────────────────────────────────────────
-  fastify.post<{ Body: ChatBody }>('/chat', async (request, reply) => {
-    const { messages, message, model } = request.body;
+  fastify.post<{ Body: ChatBody }>('/chat', {
+    preHandler: [verifyGatewayAccess, rateLimiter.middleware(60, 'gateway:chat')],
+  }, async (request, reply) => {
+    const parsed = chatBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid request payload' });
+    }
+    const { messages, message, model, conversation_id } = parsed.data;
+    const authUser = (request as any).user as { userId?: string } | undefined;
 
-    const msgArray: Message[] = messages && messages.length > 0
+    let msgArray: Message[] = messages && messages.length > 0
       ? (messages as Message[])
       : message
         ? [{ role: 'user', content: message }]
         : [];
+
+    if (conversation_id) {
+      if (!authUser?.userId) {
+        return reply.code(401).send({ error: 'Authorization required for conversation memory' });
+      }
+
+      const convOwner = await pg.query<{ id: string }>(
+        `SELECT id FROM conversations WHERE id = $1 AND user_id = $2 LIMIT 1`,
+        [conversation_id, authUser.userId],
+      );
+      if (convOwner.rowCount === 0) {
+        return reply.code(404).send({ error: 'Conversation not found' });
+      }
+
+      if (message && (!messages || messages.length === 0)) {
+        const historyQuery = await pg.query<{ role: 'user' | 'assistant' | 'system'; content: string }>(
+          `SELECT role, COALESCE(payload->'parts'->0->>'text', payload->>'content', content) AS content
+           FROM messages
+           WHERE conversation_id = $1
+           ORDER BY created_at DESC
+           LIMIT $2`,
+          [conversation_id, conversationPageSize],
+        );
+        const history = [...historyQuery.rows].reverse();
+        msgArray = [...history, { role: 'user', content: message }];
+      }
+    }
 
     if (msgArray.length === 0) {
       return reply.code(400).send({ error: 'messages or message is required' });
@@ -72,6 +148,44 @@ export async function gatewayRoutes(fastify: FastifyInstance): Promise<void> {
         const dataVal = result.data as Record<string, unknown> | undefined;
         const raw     = dataVal?.response ?? dataVal;
         const text    = typeof raw === 'string' ? raw : JSON.stringify(raw ?? '');
+
+        if (conversation_id && authUser?.userId) {
+          if (message && message.trim().length > 0) {
+            await pg.query(
+              `INSERT INTO messages (conversation_id, role, content, payload, model, token_count, latency_ms, metadata)
+               VALUES ($1, 'user', $2, $3::jsonb, $4, 0, 0, $5::jsonb)`,
+              [
+                conversation_id,
+                message,
+                JSON.stringify({ parts: [{ type: 'text', text: message }] }),
+                model ?? null,
+                JSON.stringify({ source: 'gateway/chat' }),
+              ],
+            );
+          }
+          await pg.query(
+            `INSERT INTO messages (conversation_id, role, content, payload, model, token_count, latency_ms, metadata)
+             VALUES ($1, 'assistant', $2, $3::jsonb, $4, $5, $6, $7::jsonb)`,
+            [
+              conversation_id,
+              text,
+              JSON.stringify({ parts: [{ type: 'text', text }] }),
+              result.model ?? model ?? null,
+              result.usage?.total_tokens ?? 0,
+              0,
+              JSON.stringify({
+                provider: result.provider,
+                model: result.model ?? model ?? null,
+                usage: result.usage ?? null,
+              }),
+            ],
+          );
+          await pg.query(
+            `UPDATE conversations SET updated_at = NOW(), model = COALESCE($2, model) WHERE id = $1`,
+            [conversation_id, result.model ?? model ?? null],
+          );
+        }
+
         return reply.send({
           message:  text,
           model:    result.model ?? model ?? 'default',
@@ -88,7 +202,9 @@ export async function gatewayRoutes(fastify: FastifyInstance): Promise<void> {
   });
 
   // ── POST /vision ──────────────────────────────────────────────────────────
-  fastify.post<{ Body: VisionBody }>('/vision', async (request, reply) => {
+  fastify.post<{ Body: VisionBody }>('/vision', {
+    preHandler: [verifyGatewayAccess, rateLimiter.middleware(30, 'gateway:vision')],
+  }, async (request, reply) => {
     const { imageBase64, prompt = 'Describe what you see in this image in detail.' } = request.body;
 
     if (!imageBase64) return reply.code(400).send({ error: 'imageBase64 is required' });
@@ -124,7 +240,9 @@ export async function gatewayRoutes(fastify: FastifyInstance): Promise<void> {
   });
 
   // ── POST /image ───────────────────────────────────────────────────────────
-  fastify.post<{ Body: ImageBody }>('/image', async (request, reply) => {
+  fastify.post<{ Body: ImageBody }>('/image', {
+    preHandler: [verifyGatewayAccess, rateLimiter.middleware(20, 'gateway:image')],
+  }, async (request, reply) => {
     const { prompt, model, width, height, steps } = request.body;
 
     if (!prompt) return reply.code(400).send({ error: 'prompt is required' });
@@ -148,7 +266,9 @@ export async function gatewayRoutes(fastify: FastifyInstance): Promise<void> {
   });
 
   // ── POST /tts ─────────────────────────────────────────────────────────────
-  fastify.post<{ Body: TTSBody }>('/tts', async (request, reply) => {
+  fastify.post<{ Body: TTSBody }>('/tts', {
+    preHandler: [verifyGatewayAccess, rateLimiter.middleware(30, 'gateway:tts')],
+  }, async (request, reply) => {
     const { text, voice, language, model } = request.body;
 
     if (!text) return reply.code(400).send({ error: 'text is required' });
@@ -184,7 +304,10 @@ export async function gatewayRoutes(fastify: FastifyInstance): Promise<void> {
   });
 
   // ── GET /stream — WebSocket streaming endpoint ───────────────────────────
-  fastify.get('/stream', { websocket: true }, (socket, request) => {
+  fastify.get('/stream', {
+    websocket: true,
+    preValidation: [verifyGatewayAccess, rateLimiter.middleware(60, 'gateway:stream')],
+  }, (socket, request) => {
     const clientId  = hub.addClient(socket as Parameters<typeof hub.addClient>[0]);
     const sessionId = (request.query as Record<string, string>).session ?? uuidv4();
 
@@ -213,6 +336,11 @@ export async function gatewayRoutes(fastify: FastifyInstance): Promise<void> {
           : message
             ? [{ role: 'user', content: message }]
             : [];
+
+        if (msgArray.some((m) => String(m.content ?? '').length > MAX_MESSAGE_CHARS)) {
+          socket.send(JSON.stringify({ type: 'chat/error', sessionId: sid, error: 'Message exceeds max size' }));
+          return;
+        }
 
         if (!msgArray.length) {
           socket.send(JSON.stringify({ type: 'chat/error', sessionId: sid, error: 'No messages provided' }));

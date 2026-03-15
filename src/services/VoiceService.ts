@@ -1,11 +1,26 @@
 export type VoiceServiceCallback = (text: string) => void;
 export type VoiceErrorCallback = (error: string) => void;
 
+export interface StartMicOptions {
+  language?: string;
+  onInterim?: VoiceServiceCallback;
+  onFinal?: VoiceServiceCallback;
+  onError?: VoiceErrorCallback;
+}
+
+export interface TextToSpeechOptions {
+  voice?: string;
+  language?: string;
+  rate?: number;
+  pitch?: number;
+  volume?: number;
+}
+
 export class VoiceService {
   private static instance: VoiceService;
   private recognition: SpeechRecognition | null = null;
-  private synthesis: SpeechSynthesis | null = null;
   private isListening = false;
+  private currentAudio: HTMLAudioElement | null = null;
 
   static getInstance(): VoiceService {
     if (!VoiceService.instance) VoiceService.instance = new VoiceService();
@@ -20,21 +35,27 @@ export class VoiceService {
     return 'speechSynthesis' in window;
   }
 
-  startListening(
-    onTranscript: VoiceServiceCallback,
-    onFinal: VoiceServiceCallback,
-    onError?: VoiceErrorCallback
-  ): void {
+  startMic(options: StartMicOptions = {}): void {
+    const {
+      language = 'ru-RU',
+      onInterim = () => undefined,
+      onFinal = () => undefined,
+      onError,
+    } = options;
+
     if (!this.supported) {
       onError?.('Speech recognition not supported in this browser');
       return;
     }
 
-    const SR = (window.SpeechRecognition || (window as typeof window & { webkitSpeechRecognition: typeof SpeechRecognition }).webkitSpeechRecognition);
+    const SR = (
+      window.SpeechRecognition ||
+      (window as typeof window & { webkitSpeechRecognition: typeof SpeechRecognition }).webkitSpeechRecognition
+    );
     this.recognition = new SR();
     this.recognition.continuous = true;
     this.recognition.interimResults = true;
-    this.recognition.lang = 'ru-RU';
+    this.recognition.lang = language;
 
     this.recognition.onresult = (event: SpeechRecognitionEvent) => {
       let interim = '';
@@ -47,7 +68,7 @@ export class VoiceService {
           interim += result[0].transcript;
         }
       }
-      if (interim) onTranscript(interim);
+      if (interim) onInterim(interim);
       if (final) onFinal(final);
     };
 
@@ -64,11 +85,103 @@ export class VoiceService {
     this.isListening = true;
   }
 
-  stopListening(): void {
+  stopMic(): void {
     if (this.recognition && this.isListening) {
       this.recognition.stop();
       this.isListening = false;
     }
+  }
+
+  async speechToText(audio?: Blob, language = 'ru'): Promise<string> {
+    if (audio) {
+      const formData = new FormData();
+      formData.append('audio', audio, 'speech.webm');
+      formData.append('language', language);
+      const response = await fetch('/gateway/stt', {
+        method: 'POST',
+        body: formData,
+      });
+      if (!response.ok) {
+        throw new Error(`STT HTTP ${response.status}`);
+      }
+      const data = await response.json() as { transcript?: string };
+      return data.transcript ?? '';
+    }
+
+    if (!this.supported) {
+      throw new Error('Speech recognition not supported in this browser');
+    }
+
+    return new Promise<string>((resolve, reject) => {
+      this.startMic({
+        language: language.toLowerCase().startsWith('ru') ? 'ru-RU' : language,
+        onFinal: (text) => {
+          this.stopMic();
+          resolve(text);
+        },
+        onError: (err) => reject(new Error(err)),
+      });
+    });
+  }
+
+  async textToSpeech(text: string, options: TextToSpeechOptions = {}): Promise<Blob> {
+    const response = await fetch('/gateway/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'audio/mpeg' },
+      body: JSON.stringify({
+        text,
+        voice: options.voice,
+        language: options.language ?? 'ru',
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`TTS HTTP ${response.status}`);
+    }
+    return response.blob();
+  }
+
+  playAudio(audio: Blob | string): Promise<void> {
+    const objectUrl = typeof audio === 'string' ? audio : URL.createObjectURL(audio);
+    if (this.currentAudio) {
+      this.currentAudio.pause();
+      this.currentAudio = null;
+    }
+    return new Promise<void>((resolve, reject) => {
+      const player = new Audio(objectUrl);
+      this.currentAudio = player;
+      player.onended = () => {
+        if (typeof audio !== 'string') URL.revokeObjectURL(objectUrl);
+        if (this.currentAudio === player) this.currentAudio = null;
+        resolve();
+      };
+      player.onerror = () => {
+        if (typeof audio !== 'string') URL.revokeObjectURL(objectUrl);
+        if (this.currentAudio === player) this.currentAudio = null;
+        reject(new Error('Failed to play audio'));
+      };
+      void player.play().catch((err) => {
+        if (typeof audio !== 'string') URL.revokeObjectURL(objectUrl);
+        if (this.currentAudio === player) this.currentAudio = null;
+        reject(err instanceof Error ? err : new Error(String(err)));
+      });
+    });
+  }
+
+  startListening(
+    onTranscript: VoiceServiceCallback,
+    onFinal: VoiceServiceCallback,
+    onError?: VoiceErrorCallback
+  ): void {
+    this.startMic({
+      language: 'ru-RU',
+      onInterim: onTranscript,
+      onFinal,
+      onError,
+    });
+  }
+
+  stopListening(): void {
+    this.stopMic();
   }
 
   speak(text: string, options: { rate?: number; pitch?: number; volume?: number } = {}): Promise<void> {
@@ -95,6 +208,11 @@ export class VoiceService {
 
   cancel(): void {
     this.stopListening();
+    this.stopMic();
+    if (this.currentAudio) {
+      this.currentAudio.pause();
+      this.currentAudio = null;
+    }
     if (this.ttsSupported) window.speechSynthesis.cancel();
   }
 

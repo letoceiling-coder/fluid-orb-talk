@@ -7,7 +7,8 @@
     "dev": "ts-node-dev --respawn --transpile-only --esm src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "clean": "rimraf dist"
+    "clean": "rimraf dist",
+    "create-admin": "ts-node --esm scripts/create-admin.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
@@ -19,14 +20,16 @@
     "dotenv": "^16.4.5",
     "elevenlabs": "^1.59.0",
     "fastify": "^4.28.1",
-    "mysql2": "^3.9.8",
     "openai": "^4.104.0",
+    "pg": "^8.13.1",
+    "redis": "^4.7.0",
     "replicate": "^1.4.0",
     "uuid": "^10.0.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^20.14.9",
+    "@types/pg": "^8.11.10",
     "@types/uuid": "^10.0.0",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",

@@ -16,9 +16,18 @@ import type {
  * Antoni: ErXwobaYiN019PkySvjV — English, warm male
  * Domi:   AZnzlk1XvdvUeBnXmlld — Russian-compatible multilingual
  */
-const DEFAULT_VOICE_ID = '21m00Tcm4TlvDq8ikWAM';   // Rachel
+const DEFAULT_VOICE_ID   = '21m00Tcm4TlvDq8ikWAM';   // Rachel
 const MULTILINGUAL_MODEL = 'eleven_multilingual_v2';
 const TURBO_MODEL        = 'eleven_turbo_v2_5';
+
+/** Human-readable voice name → ElevenLabs voice ID */
+const VOICE_NAME_TO_ID: Record<string, string> = {
+  rachel:  '21m00Tcm4TlvDq8ikWAM',
+  bella:   'EXAVITQu4vr4xnSDxMaL',
+  adam:    'pNInz6obpgDQGcFmaJgB',
+  antoni:  'ErXwobaYiN019PkySvjV',
+  domi:    'AZnzlk1XvdvUeBnXmlld',
+};
 
 export class ElevenLabsProvider extends BaseProvider {
   readonly name = 'elevenlabs';
@@ -39,7 +48,8 @@ export class ElevenLabsProvider extends BaseProvider {
   }
 
   async tts(text: string, config: TTSConfig = {}): Promise<Buffer> {
-    const voiceId = config.voice ?? DEFAULT_VOICE_ID;
+    const rawVoice = config.voice ?? DEFAULT_VOICE_ID;
+    const voiceId  = VOICE_NAME_TO_ID[rawVoice.toLowerCase()] ?? rawVoice;
     const modelId = config.model ?? (config.language && config.language !== 'en'
       ? MULTILINGUAL_MODEL
       : TURBO_MODEL);

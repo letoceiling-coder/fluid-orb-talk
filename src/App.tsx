@@ -24,7 +24,7 @@ import Marketplace from "./pages/Marketplace";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import VideoAssistant from "./pages/VideoAssistant";
-import VoiceAssistantPage from "./pages/VoiceAssistantPage";
+import VoiceAssistant from "./pages/VoiceAssistant";
 import LiveAIMode from "./pages/LiveAIMode";
 import MultimodalChat from "./pages/MultimodalChat";
 import AICreationCanvas from "./pages/AICreationCanvas";
@@ -34,6 +34,13 @@ import AISuperRouter from "./pages/AISuperRouter";
 import DemoMediaGenerator from "./pages/DemoMediaGenerator";
 import AIGatewayCore from "./pages/AIGatewayCore";
 import SystemTest from "./pages/SystemTest";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
+import Profile from "./pages/Profile";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { AuthProvider } from "@/contexts/AuthContext";
 
 const queryClient = new QueryClient();
 
@@ -42,42 +49,53 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route element={<AppLayout />}>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/ai-studio" element={<AIStudio />} />
-            <Route path="/media-studio" element={<MediaStudio />} />
-            <Route path="/voice-studio" element={<VoiceStudio />} />
-            <Route path="/data-analysis" element={<DataAnalysis />} />
-            <Route path="/agents" element={<Agents />} />
-            <Route path="/tools" element={<Tools />} />
-            <Route path="/datasets" element={<Datasets />} />
-            <Route path="/models" element={<Models />} />
-            <Route path="/api-keys" element={<ApiKeys />} />
-            <Route path="/usage" element={<Usage />} />
-            <Route path="/api-tokens" element={<ApiTokens />} />
-            <Route path="/storage" element={<Storage />} />
-            <Route path="/logs" element={<Logs />} />
-            <Route path="/monitoring" element={<Monitoring />} />
-            <Route path="/gateway-pro" element={<GatewayPro />} />
-            <Route path="/marketplace" element={<Marketplace />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/video-assistant" element={<VideoAssistant />} />
-            <Route path="/voice-assistant" element={<VoiceAssistantPage />} />
-            <Route path="/live-ai" element={<LiveAIMode />} />
-            <Route path="/multimodal-chat" element={<MultimodalChat />} />
-            <Route path="/ai-canvas" element={<AICreationCanvas />} />
-            <Route path="/model-hub" element={<AIModelHub />} />
-            <Route path="/automation" element={<AIAutomationBuilder />} />
-            <Route path="/super-router" element={<AISuperRouter />} />
-            <Route path="/gateway-core" element={<AIGatewayCore />} />
-            <Route path="/demo-media" element={<DemoMediaGenerator />} />
-            <Route path="/system-test" element={<SystemTest />} />
-          </Route>
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+
+            <Route element={<ProtectedRoute />}>
+              <Route element={<AppLayout />}>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/ai-studio" element={<AIStudio />} />
+                <Route path="/media-studio" element={<MediaStudio />} />
+                <Route path="/voice-studio" element={<VoiceStudio />} />
+                <Route path="/data-analysis" element={<DataAnalysis />} />
+                <Route path="/agents" element={<Agents />} />
+                <Route path="/tools" element={<Tools />} />
+                <Route path="/datasets" element={<Datasets />} />
+                <Route path="/models" element={<Models />} />
+                <Route path="/api-keys" element={<ApiKeys />} />
+                <Route path="/usage" element={<Usage />} />
+                <Route path="/api-tokens" element={<ApiTokens />} />
+                <Route path="/storage" element={<Storage />} />
+                <Route path="/logs" element={<Logs />} />
+                <Route path="/monitoring" element={<Monitoring />} />
+                <Route path="/gateway-pro" element={<GatewayPro />} />
+                <Route path="/marketplace" element={<Marketplace />} />
+                <Route path="/settings" element={<Settings />} />
+                <Route path="/video-assistant" element={<VideoAssistant />} />
+                <Route path="/voice-assistant" element={<VoiceAssistant />} />
+                <Route path="/live-ai" element={<LiveAIMode />} />
+                <Route path="/multimodal-chat" element={<MultimodalChat />} />
+                <Route path="/ai-canvas" element={<AICreationCanvas />} />
+                <Route path="/model-hub" element={<AIModelHub />} />
+                <Route path="/automation" element={<AIAutomationBuilder />} />
+                <Route path="/super-router" element={<AISuperRouter />} />
+                <Route path="/gateway-core" element={<AIGatewayCore />} />
+                <Route path="/demo-media" element={<DemoMediaGenerator />} />
+                <Route path="/system-test" element={<SystemTest />} />
+                <Route path="/profile" element={<Profile />} />
+              </Route>
+            </Route>
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );
