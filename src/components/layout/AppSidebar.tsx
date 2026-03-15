@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, MessageSquare, Image, Mic, BarChart3, Bot, Wrench, Database,
   Key, CreditCard, Coins, HardDrive, FileText, Activity, Zap, ShoppingBag, Settings, Layers,
-  Video, Waves, Radio, Sparkles
+  Video, Waves, Radio, Sparkles, PenTool
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -26,6 +26,12 @@ const navGroups = [
       { title: "Voice Assistant", url: "/voice-assistant", icon: Waves },
       { title: "Live AI Mode", url: "/live-ai", icon: Radio },
       { title: "Multimodal Chat", url: "/multimodal-chat", icon: Sparkles },
+    ],
+  },
+  {
+    label: "Canvas",
+    items: [
+      { title: "AI Creation Canvas", url: "/ai-canvas", icon: PenTool },
     ],
   },
   {
