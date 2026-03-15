@@ -33,6 +33,7 @@ import AIAutomationBuilder from "./pages/AIAutomationBuilder";
 import AISuperRouter from "./pages/AISuperRouter";
 import DemoMediaGenerator from "./pages/DemoMediaGenerator";
 import AIGatewayCore from "./pages/AIGatewayCore";
+import SystemTest from "./pages/SystemTest";
 
 const queryClient = new QueryClient();
 
@@ -72,6 +73,7 @@ const App = () => (
             <Route path="/super-router" element={<AISuperRouter />} />
             <Route path="/gateway-core" element={<AIGatewayCore />} />
             <Route path="/demo-media" element={<DemoMediaGenerator />} />
+            <Route path="/system-test" element={<SystemTest />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>

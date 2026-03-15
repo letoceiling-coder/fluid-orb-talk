@@ -13,6 +13,7 @@ export default defineConfig({
       "/gateway": {
         target: "http://localhost:5000",
         changeOrigin: true,
+        ws: true,
         rewrite: (p) => p.replace(/^\/gateway/, ""),
       },
     },
