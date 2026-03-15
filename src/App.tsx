@@ -32,6 +32,7 @@ import AIModelHub from "./pages/AIModelHub";
 import AIAutomationBuilder from "./pages/AIAutomationBuilder";
 import AISuperRouter from "./pages/AISuperRouter";
 import DemoMediaGenerator from "./pages/DemoMediaGenerator";
+import AIGatewayCore from "./pages/AIGatewayCore";
 
 const queryClient = new QueryClient();
 
